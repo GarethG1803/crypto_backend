@@ -7,7 +7,7 @@ const getAchievements = async (req, res) => {
     const achievementsSnap = await db.collection('achievements').get();
     const achievements = achievementsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // Get user's unlocked achievements
+    // Get user's unlocked achievementss
     const userAchievementsSnap = await db.collection('userAchievements')
       .where('userId', '==', userId)
       .get();
