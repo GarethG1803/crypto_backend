@@ -15,34 +15,52 @@ const getPortfolio = async (req, res) => {
   try {
     const doc = await db.collection('simulator').doc(userId).get();
     if (!doc.exists) {
-      // Initialize if not exists
-      const initial = { balance: 10000, portfolio: {}, totalValue: 10000 };
+      const initial = { balance: 10000, portfolio: {}, costBasis: {} };
       await db.collection('simulator').doc(userId).set(initial);
-      return res.json({ ...initial, holdings: [], prices: CRYPTO_PRICES });
+      return res.json({
+        balance: 10000,
+        holdings: [],
+        portfolioValue: 0,
+        totalValue: 10000,
+        pnl: 0,
+        pnlPercent: 0,
+        prices: CRYPTO_PRICES,
+      });
     }
 
     const data = doc.data();
+    const costBasis = data.costBasis || {};
+
     const holdings = Object.entries(data.portfolio || {}).map(([symbol, amount]) => {
       const crypto = CRYPTO_PRICES[symbol];
+      const currentValue = amount * crypto.price;
+      const basis = costBasis[symbol] || 0;
+      const holdingPnl = currentValue - basis;
       return {
         symbol,
         name: crypto.name,
         amount,
-        value: amount * crypto.price,
+        value: currentValue,
+        costBasis: basis,
+        pnl: holdingPnl,
+        pnlPercent: basis > 0 ? ((holdingPnl / basis) * 100) : 0,
         change: crypto.change,
         icon: crypto.icon,
       };
     }).filter(h => h.amount > 0);
 
     const portfolioValue = holdings.reduce((sum, h) => sum + h.value, 0);
+    const totalCostBasis = holdings.reduce((sum, h) => sum + h.costBasis, 0);
     const totalValue = data.balance + portfolioValue;
+    const pnl = portfolioValue - totalCostBasis;
 
     res.json({
       balance: data.balance,
-      portfolio: data.portfolio,
       holdings,
       portfolioValue,
       totalValue,
+      pnl,
+      pnlPercent: totalCostBasis > 0 ? ((pnl / totalCostBasis) * 100) : 0,
       prices: CRYPTO_PRICES,
     });
   } catch (err) {
@@ -77,10 +95,11 @@ const executeTrade = async (req, res) => {
 
     let simData;
     if (!simDoc.exists) {
-      simData = { balance: 10000, portfolio: {} };
+      simData = { balance: 10000, portfolio: {}, costBasis: {} };
       await simRef.set(simData);
     } else {
       simData = simDoc.data();
+      if (!simData.costBasis) simData.costBasis = {};
     }
 
     const price = priceData.price;
@@ -94,10 +113,12 @@ const executeTrade = async (req, res) => {
 
       const newBalance = simData.balance - totalCost;
       const currentHolding = simData.portfolio[crypto] || 0;
+      const currentCostBasis = simData.costBasis[crypto] || 0;
 
       await simRef.update({
         balance: newBalance,
         [`portfolio.${crypto}`]: currentHolding + amount,
+        [`costBasis.${crypto}`]: currentCostBasis + totalCost,
       });
 
       // Record transaction
@@ -128,10 +149,18 @@ const executeTrade = async (req, res) => {
 
       const totalRevenue = amount * price - fee;
       const newBalance = simData.balance + totalRevenue;
+      const newHolding = currentHolding - amount;
+
+      // Reduce cost basis proportionally
+      const currentCostBasis = simData.costBasis[crypto] || 0;
+      const newCostBasis = newHolding > 0
+        ? currentCostBasis * (newHolding / currentHolding)
+        : 0;
 
       await simRef.update({
         balance: newBalance,
-        [`portfolio.${crypto}`]: currentHolding - amount,
+        [`portfolio.${crypto}`]: newHolding,
+        [`costBasis.${crypto}`]: newCostBasis,
       });
 
       // Record transaction
@@ -149,7 +178,7 @@ const executeTrade = async (req, res) => {
       res.json({
         message: `Sold ${amount} ${crypto}`,
         balance: newBalance,
-        holding: currentHolding - amount,
+        holding: newHolding,
         fee,
         total: totalRevenue,
       });
