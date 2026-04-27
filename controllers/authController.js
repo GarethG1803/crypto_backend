@@ -68,15 +68,16 @@ const login = async (req, res) => {
     const customToken = await auth.createCustomToken(userRecord.uid);
     const idToken = await exchangeCustomTokenForIdToken(customToken);
 
-    // Fetch name from Firestore
+    // Fetch user data from Firestore
     const userDoc = await db.collection('users').doc(userRecord.uid).get();
-    const name = userDoc.exists ? userDoc.data().name || '' : '';
+    const userData = userDoc.exists ? userDoc.data() : {};
 
     res.json({
       message: 'Login successful',
       uid: userRecord.uid,
       token: idToken,
-      name,
+      name: userData.name || '',
+      points: userData.points || 0,
     });
   } catch (err) {
     res.status(401).json({ error: 'Invalid credentials' });
@@ -90,7 +91,7 @@ const getProfile = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     const data = userDoc.data();
-    res.json({ name: data.name || '', email: data.email || '' });
+    res.json({ name: data.name || '', email: data.email || '', points: data.points || 0 });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
