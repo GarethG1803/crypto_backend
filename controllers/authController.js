@@ -78,6 +78,7 @@ const login = async (req, res) => {
       token: idToken,
       name: userData.name || '',
       points: userData.points || 0,
+      isAdmin: userData.isAdmin || false,
     });
   } catch (err) {
     res.status(401).json({ error: 'Invalid credentials' });
@@ -91,7 +92,7 @@ const getProfile = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     const data = userDoc.data();
-    res.json({ name: data.name || '', email: data.email || '', points: data.points || 0 });
+    res.json({ name: data.name || '', email: data.email || '', points: data.points || 0, isAdmin: data.isAdmin || false });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
