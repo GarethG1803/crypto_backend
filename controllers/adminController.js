@@ -160,6 +160,36 @@ const getAllModulesAdmin = async (req, res) => {
   }
 };
 
+// POST /api/admin/modules
+const createModule = async (req, res) => {
+  const { title, description, difficulty, category, duration, rewardPoints, order, content } = req.body;
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: 'Title is required' });
+  }
+
+  try {
+    // Generate a URL-friendly ID from the title
+    const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+    const moduleData = {
+      title: title.trim(),
+      description: (description || '').trim(),
+      difficulty: difficulty || 'beginner',
+      category: (category || '').trim(),
+      duration: (duration || '').trim(),
+      rewardPoints: rewardPoints ?? 100,
+      quizQuestionCount: 0,
+      order: order ?? 0,
+      content: content || [],
+    };
+
+    await db.collection('modules').doc(id).set(moduleData);
+    res.status(201).json({ message: 'Module created', id, ...moduleData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // PUT /api/admin/modules/:id
 const updateModule = async (req, res) => {
   const { title, description, difficulty, rewardPoints, duration, order } = req.body;
@@ -243,6 +273,7 @@ module.exports = {
   updateUser,
   deleteUser,
   getAllModulesAdmin,
+  createModule,
   updateModule,
   getAllScores,
   resetUserProgress,

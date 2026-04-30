@@ -9,6 +9,7 @@ const {
   updateUser,
   deleteUser,
   getAllModulesAdmin,
+  createModule,
   updateModule,
   getAllScores,
   resetUserProgress,
@@ -28,6 +29,7 @@ router.delete('/users/:uid', deleteUser);
 
 // Modules
 router.get('/modules', getAllModulesAdmin);
+router.post('/modules', createModule);
 router.put('/modules/:id', updateModule);
 
 // Scores / Progress
