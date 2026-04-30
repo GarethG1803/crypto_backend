@@ -213,6 +213,66 @@ const updateModule = async (req, res) => {
   }
 };
 
+// PUT /api/admin/modules/:id/content
+const updateModuleContent = async (req, res) => {
+  const { content } = req.body;
+  if (!Array.isArray(content)) {
+    return res.status(400).json({ error: 'content must be an array' });
+  }
+  try {
+    await db.collection('modules').doc(req.params.id).update({ content });
+    res.json({ message: 'Module content updated' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/admin/modules/:id/quiz
+const getModuleQuiz = async (req, res) => {
+  try {
+    const snapshot = await db.collection('quizzes')
+      .where('moduleId', '==', req.params.id)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      return res.json({ questions: [] });
+    }
+
+    const quiz = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+    res.json(quiz);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// PUT /api/admin/modules/:id/quiz
+const saveModuleQuiz = async (req, res) => {
+  const { questions } = req.body;
+  if (!Array.isArray(questions)) {
+    return res.status(400).json({ error: 'questions must be an array' });
+  }
+
+  try {
+    const moduleId = req.params.id;
+    const quizId = `quiz-${moduleId}`;
+
+    await db.collection('quizzes').doc(quizId).set({
+      moduleId,
+      questions,
+    });
+
+    // Update quizQuestionCount on the module
+    await db.collection('modules').doc(moduleId).update({
+      quizQuestionCount: questions.length,
+    });
+
+    res.json({ message: 'Quiz saved', id: quizId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // GET /api/admin/scores
 const getAllScores = async (req, res) => {
   try {
@@ -275,6 +335,9 @@ module.exports = {
   getAllModulesAdmin,
   createModule,
   updateModule,
+  updateModuleContent,
+  getModuleQuiz,
+  saveModuleQuiz,
   getAllScores,
   resetUserProgress,
 };

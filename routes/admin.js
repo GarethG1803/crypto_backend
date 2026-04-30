@@ -11,6 +11,9 @@ const {
   getAllModulesAdmin,
   createModule,
   updateModule,
+  updateModuleContent,
+  getModuleQuiz,
+  saveModuleQuiz,
   getAllScores,
   resetUserProgress,
 } = require('../controllers/adminController');
@@ -31,6 +34,9 @@ router.delete('/users/:uid', deleteUser);
 router.get('/modules', getAllModulesAdmin);
 router.post('/modules', createModule);
 router.put('/modules/:id', updateModule);
+router.put('/modules/:id/content', updateModuleContent);
+router.get('/modules/:id/quiz', getModuleQuiz);
+router.put('/modules/:id/quiz', saveModuleQuiz);
 
 // Scores / Progress
 router.get('/scores', getAllScores);
