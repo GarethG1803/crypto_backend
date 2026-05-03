@@ -239,15 +239,16 @@ const getHistory = async (req, res) => {
 
 const getChartDataHandler = async (req, res) => {
   const { symbol } = req.params;
-  const days = parseInt(req.query.days) || 1;
+  const days = parseFloat(req.query.days) || 1;
 
   const upperSymbol = symbol.toUpperCase();
   if (!COIN_MAP[upperSymbol]) {
     return res.status(400).json({ error: `Invalid symbol: ${symbol}` });
   }
 
-  if (![1, 7, 30, 90, 365].includes(days)) {
-    return res.status(400).json({ error: 'days must be one of: 1, 7, 30, 90, 365' });
+  const ALLOWED_DAYS = [0.04, 0.25, 1, 7, 30, 90, 365];
+  if (!ALLOWED_DAYS.includes(days)) {
+    return res.status(400).json({ error: `days must be one of: ${ALLOWED_DAYS.join(', ')}` });
   }
 
   try {
