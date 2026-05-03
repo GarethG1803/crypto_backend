@@ -1,18 +1,14 @@
 const { db } = require('../config/firebase');
-
-const CRYPTO_PRICES = {
-  BTC: { name: 'Bitcoin', price: 43567.89, change: 2.34, icon: '₿' },
-  ETH: { name: 'Ethereum', price: 2345.67, change: -1.12, icon: 'Ξ' },
-  ADA: { name: 'Cardano', price: 0.58, change: 5.67, icon: '₳' },
-  SOL: { name: 'Solana', price: 98.23, change: 3.45, icon: '◎' },
-  DOT: { name: 'Polkadot', price: 7.82, change: -0.89, icon: '●' },
-};
+const { getCurrentPrices, getChartData, COIN_MAP } = require('../services/coinGeckoService');
+const { generateTradeFeedback } = require('../services/tradeFeedbackService');
 
 const FEE_RATE = 0.001; // 0.1%
 
 const getPortfolio = async (req, res) => {
   const userId = req.user.uid;
   try {
+    const prices = await getCurrentPrices();
+
     const doc = await db.collection('simulator').doc(userId).get();
     if (!doc.exists) {
       const initial = { balance: 10000, portfolio: {}, costBasis: {} };
@@ -24,7 +20,7 @@ const getPortfolio = async (req, res) => {
         totalValue: 10000,
         pnl: 0,
         pnlPercent: 0,
-        prices: CRYPTO_PRICES,
+        prices,
       });
     }
 
@@ -32,7 +28,8 @@ const getPortfolio = async (req, res) => {
     const costBasis = data.costBasis || {};
 
     const holdings = Object.entries(data.portfolio || {}).map(([symbol, amount]) => {
-      const crypto = CRYPTO_PRICES[symbol];
+      const crypto = prices[symbol];
+      if (!crypto) return null;
       const currentValue = amount * crypto.price;
       const basis = costBasis[symbol] || 0;
       const holdingPnl = currentValue - basis;
@@ -47,7 +44,7 @@ const getPortfolio = async (req, res) => {
         change: crypto.change,
         icon: crypto.icon,
       };
-    }).filter(h => h.amount > 0);
+    }).filter(h => h && h.amount > 0);
 
     const portfolioValue = holdings.reduce((sum, h) => sum + h.value, 0);
     const totalCostBasis = holdings.reduce((sum, h) => sum + h.costBasis, 0);
@@ -61,7 +58,7 @@ const getPortfolio = async (req, res) => {
       totalValue,
       pnl,
       pnlPercent: totalCostBasis > 0 ? ((pnl / totalCostBasis) * 100) : 0,
-      prices: CRYPTO_PRICES,
+      prices,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -84,7 +81,8 @@ const executeTrade = async (req, res) => {
     return res.status(400).json({ error: 'amount must be positive' });
   }
 
-  const priceData = CRYPTO_PRICES[crypto];
+  const prices = await getCurrentPrices();
+  const priceData = prices[crypto];
   if (!priceData) {
     return res.status(400).json({ error: 'Invalid cryptocurrency' });
   }
@@ -133,12 +131,29 @@ const executeTrade = async (req, res) => {
         timestamp: new Date().toISOString(),
       });
 
+      // Calculate portfolio balance for feedback
+      const portfolioValue = Object.entries(simData.portfolio || {}).reduce((sum, [sym, amt]) => {
+        return sum + amt * (prices[sym]?.price || 0);
+      }, 0);
+      const totalPortfolioBalance = simData.balance + portfolioValue;
+
+      const feedback = generateTradeFeedback({
+        type: 'buy',
+        crypto,
+        amount,
+        price,
+        avgCost: 0,
+        portfolioBalance: totalPortfolioBalance,
+        priceChange24h: priceData.change,
+      });
+
       res.json({
         message: `Bought ${amount} ${crypto}`,
         balance: newBalance,
         holding: currentHolding + amount,
         fee,
         total: totalCost,
+        feedback,
       });
     } else {
       // Sell
@@ -153,6 +168,7 @@ const executeTrade = async (req, res) => {
 
       // Reduce cost basis proportionally
       const currentCostBasis = simData.costBasis[crypto] || 0;
+      const avgCost = currentHolding > 0 ? currentCostBasis / currentHolding : 0;
       const newCostBasis = newHolding > 0
         ? currentCostBasis * (newHolding / currentHolding)
         : 0;
@@ -175,12 +191,28 @@ const executeTrade = async (req, res) => {
         timestamp: new Date().toISOString(),
       });
 
+      const portfolioValue = Object.entries(simData.portfolio || {}).reduce((sum, [sym, amt]) => {
+        return sum + amt * (prices[sym]?.price || 0);
+      }, 0);
+      const totalPortfolioBalance = simData.balance + portfolioValue;
+
+      const feedback = generateTradeFeedback({
+        type: 'sell',
+        crypto,
+        amount,
+        price,
+        avgCost,
+        portfolioBalance: totalPortfolioBalance,
+        priceChange24h: priceData.change,
+      });
+
       res.json({
         message: `Sold ${amount} ${crypto}`,
         balance: newBalance,
         holding: newHolding,
         fee,
         total: totalRevenue,
+        feedback,
       });
     }
   } catch (err) {
@@ -205,4 +237,25 @@ const getHistory = async (req, res) => {
   }
 };
 
-module.exports = { getPortfolio, executeTrade, getHistory };
+const getChartDataHandler = async (req, res) => {
+  const { symbol } = req.params;
+  const days = parseInt(req.query.days) || 1;
+
+  const upperSymbol = symbol.toUpperCase();
+  if (!COIN_MAP[upperSymbol]) {
+    return res.status(400).json({ error: `Invalid symbol: ${symbol}` });
+  }
+
+  if (![1, 7, 30, 90, 365].includes(days)) {
+    return res.status(400).json({ error: 'days must be one of: 1, 7, 30, 90, 365' });
+  }
+
+  try {
+    const data = await getChartData(upperSymbol, days);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { getPortfolio, executeTrade, getHistory, getChartDataHandler };
