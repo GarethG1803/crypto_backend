@@ -1,4 +1,4 @@
-const { auth, db, bucket } = require('../config/firebase');
+const { auth, db } = require('../config/firebase');
 const path = require('path');
 
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
@@ -196,6 +196,7 @@ const uploadProfilePicture = async (req, res) => {
       return res.status(400).json({ error: 'Only JPEG, PNG, and WebP images are allowed' });
     }
 
+    const { bucket } = require('../config/firebase');
     const ext = path.extname(req.file.originalname) || `.${req.file.mimetype.split('/')[1]}`;
     const fileName = `profile-pictures/${req.user.uid}_${Date.now()}${ext}`;
     const file = bucket.file(fileName);
