@@ -23,6 +23,11 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const auth = admin.auth();
-const bucket = admin.storage().bucket();
 
-module.exports = { admin, db, auth, bucket };
+let _bucket;
+const getBucket = () => {
+  if (!_bucket) _bucket = admin.storage().bucket();
+  return _bucket;
+};
+
+module.exports = { admin, db, auth, get bucket() { return getBucket(); } };
