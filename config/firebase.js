@@ -15,10 +15,14 @@ if (!admin.apps.length) {
     credential = admin.credential.cert(serviceAccount);
   }
 
-  admin.initializeApp({ credential });
+  admin.initializeApp({
+    credential,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  });
 }
 
 const db = admin.firestore();
 const auth = admin.auth();
+const bucket = admin.storage().bucket();
 
-module.exports = { admin, db, auth };
+module.exports = { admin, db, auth, bucket };

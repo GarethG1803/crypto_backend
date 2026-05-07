@@ -29,6 +29,7 @@ const getLeaderboard = async (userId) => {
     points: userPoints[doc.id] || 0,
     streak: doc.data().streak || 0,
     level: doc.data().level || 1,
+    profilePicture: doc.data().profilePicture || null,
   }));
 
   // Sort by points descending, take top 10

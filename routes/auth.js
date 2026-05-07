@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { signup, login, getProfile, updateProfile, changePassword, checkUsername } = require('../controllers/authController');
+const multer = require('multer');
+const { signup, login, getProfile, updateProfile, changePassword, checkUsername, uploadProfilePicture } = require('../controllers/authController');
 const verifyToken = require('../middleware/auth');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 
 // Optional auth — attaches user if token present, doesn't block if missing
 const optionalAuth = async (req, res, next) => {
@@ -22,5 +25,6 @@ router.get('/profile', verifyToken, getProfile);
 router.put('/profile', verifyToken, updateProfile);
 router.put('/change-password', verifyToken, changePassword);
 router.get('/check-username', optionalAuth, checkUsername);
+router.post('/profile/picture', verifyToken, upload.single('profilePicture'), uploadProfilePicture);
 
 module.exports = router;

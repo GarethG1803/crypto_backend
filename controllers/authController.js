@@ -1,4 +1,5 @@
-const { auth, db } = require('../config/firebase');
+const { auth, db, bucket } = require('../config/firebase');
+const path = require('path');
 
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
 
@@ -110,6 +111,7 @@ const login = async (req, res) => {
       name: userData.name || '',
       points: userData.points || 0,
       isAdmin: userData.isAdmin || false,
+      profilePicture: userData.profilePicture || null,
     });
   } catch (err) {
     res.status(401).json({ error: 'Invalid email or password' });
@@ -123,7 +125,7 @@ const getProfile = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     const data = userDoc.data();
-    res.json({ name: data.name || '', email: data.email || '', points: data.points || 0, isAdmin: data.isAdmin || false });
+    res.json({ name: data.name || '', email: data.email || '', points: data.points || 0, isAdmin: data.isAdmin || false, profilePicture: data.profilePicture || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -183,4 +185,35 @@ const checkUsername = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, getProfile, updateProfile, changePassword, checkUsername };
+const uploadProfilePicture = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Only JPEG, PNG, and WebP images are allowed' });
+    }
+
+    const ext = path.extname(req.file.originalname) || `.${req.file.mimetype.split('/')[1]}`;
+    const fileName = `profile-pictures/${req.user.uid}_${Date.now()}${ext}`;
+    const file = bucket.file(fileName);
+
+    await file.save(req.file.buffer, {
+      metadata: { contentType: req.file.mimetype },
+    });
+
+    await file.makePublic();
+
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+    await db.collection('users').doc(req.user.uid).update({ profilePicture: publicUrl });
+
+    res.json({ profilePicture: publicUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { signup, login, getProfile, updateProfile, changePassword, checkUsername, uploadProfilePicture };
