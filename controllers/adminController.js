@@ -38,7 +38,27 @@ const getDashboardStats = async (req, res) => {
 const getAllUsers = async (req, res) => {
   try {
     const snapshot = await db.collection('users').get();
-    const users = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+
+    // Compute achievement-based points per user
+    const achievementsSnap = await db.collection('achievements').get();
+    const achievementMap = {};
+    achievementsSnap.docs.forEach(doc => {
+      achievementMap[doc.id] = doc.data().rewardPoints || 0;
+    });
+
+    const userAchievementsSnap = await db.collection('userAchievements').get();
+    const achievementPoints = {};
+    userAchievementsSnap.docs.forEach(doc => {
+      const data = doc.data();
+      const pts = achievementMap[data.achievementId] || 0;
+      achievementPoints[data.userId] = (achievementPoints[data.userId] || 0) + pts;
+    });
+
+    const users = snapshot.docs.map(doc => ({
+      uid: doc.id,
+      ...doc.data(),
+      points: achievementPoints[doc.id] || 0,
+    }));
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: err.message });
