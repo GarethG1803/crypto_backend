@@ -1,4 +1,4 @@
-const { auth } = require('../config/firebase');
+const { auth, db } = require('../config/firebase');
 
 const verifyToken = async (req, res, next) => {
   const header = req.headers.authorization;
@@ -10,6 +10,12 @@ const verifyToken = async (req, res, next) => {
   try {
     const decoded = await auth.verifyIdToken(token);
     req.user = decoded;
+
+    // Update lastActiveDate in background (fire-and-forget)
+    db.collection('users').doc(decoded.uid).update({
+      lastActiveDate: new Date().toISOString(),
+    }).catch(() => {});
+
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });
