@@ -17,6 +17,18 @@ const exchangeCustomTokenForIdToken = async (customToken) => {
   return data.idToken;
 };
 
+// Check if a username is already taken (case-insensitive)
+const isUsernameTaken = async (name, excludeUid = null) => {
+  const normalized = name.trim().toLowerCase();
+  const snapshot = await db.collection('users').get();
+  for (const doc of snapshot.docs) {
+    if (excludeUid && doc.id === excludeUid) continue;
+    const docName = (doc.data().name || '').trim().toLowerCase();
+    if (docName === normalized) return true;
+  }
+  return false;
+};
+
 const signup = async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
@@ -24,6 +36,11 @@ const signup = async (req, res) => {
   }
 
   try {
+    // Check username uniqueness
+    if (await isUsernameTaken(name)) {
+      return res.status(400).json({ error: 'Username is already taken' });
+    }
+
     const userRecord = await auth.createUser({ email, password, displayName: name });
 
     await db.collection('users').doc(userRecord.uid).set({
@@ -58,30 +75,44 @@ const signup = async (req, res) => {
 };
 
 const login = async (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
   }
 
   try {
-    const userRecord = await auth.getUserByEmail(email);
-    const customToken = await auth.createCustomToken(userRecord.uid);
-    const idToken = await exchangeCustomTokenForIdToken(customToken);
+    // Verify password via Firebase REST API signInWithPassword
+    const signInRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, returnSecureToken: true }),
+      }
+    );
+    const signInData = await signInRes.json();
+
+    if (signInData.error) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const idToken = signInData.idToken;
+    const uid = signInData.localId;
 
     // Fetch user data from Firestore
-    const userDoc = await db.collection('users').doc(userRecord.uid).get();
+    const userDoc = await db.collection('users').doc(uid).get();
     const userData = userDoc.exists ? userDoc.data() : {};
 
     res.json({
       message: 'Login successful',
-      uid: userRecord.uid,
+      uid,
       token: idToken,
       name: userData.name || '',
       points: userData.points || 0,
       isAdmin: userData.isAdmin || false,
     });
   } catch (err) {
-    res.status(401).json({ error: 'Invalid credentials' });
+    res.status(401).json({ error: 'Invalid email or password' });
   }
 };
 
@@ -105,8 +136,12 @@ const updateProfile = async (req, res) => {
   }
 
   try {
+    // Check username uniqueness (exclude current user)
+    if (await isUsernameTaken(name, req.user.uid)) {
+      return res.status(400).json({ error: 'Username is already taken' });
+    }
+
     await db.collection('users').doc(req.user.uid).update({ name: name.trim() });
-    // Also update Firebase Auth displayName
     await auth.updateUser(req.user.uid, { displayName: name.trim() });
     res.json({ message: 'Profile updated', name: name.trim() });
   } catch (err) {
@@ -114,4 +149,38 @@ const updateProfile = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, getProfile, updateProfile };
+const changePassword = async (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  try {
+    await auth.updateUser(req.user.uid, { password });
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const checkUsername = async (req, res) => {
+  const { name } = req.query;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+
+  try {
+    // If authenticated, exclude current user
+    const excludeUid = req.user ? req.user.uid : null;
+    const taken = await isUsernameTaken(name, excludeUid);
+    res.json({ available: !taken });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { signup, login, getProfile, updateProfile, changePassword, checkUsername };
