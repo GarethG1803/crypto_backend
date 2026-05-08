@@ -331,6 +331,38 @@ const getAllScores = async (req, res) => {
   }
 };
 
+// DELETE /api/admin/modules/:id
+const deleteModule = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const moduleDoc = await db.collection('modules').doc(id).get();
+    if (!moduleDoc.exists) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+
+    // Delete the module
+    await db.collection('modules').doc(id).delete();
+
+    // Clean up related quiz
+    const quizDoc = await db.collection('quizzes').doc(`quiz-${id}`).get();
+    if (quizDoc.exists) await db.collection('quizzes').doc(`quiz-${id}`).delete();
+
+    // Clean up related progress
+    const progressSnap = await db.collection('progress')
+      .where('moduleId', '==', id)
+      .get();
+    if (progressSnap.size > 0) {
+      const batch = db.batch();
+      progressSnap.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    }
+
+    res.json({ message: 'Module deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // DELETE /api/admin/scores/:progressId
 const resetUserProgress = async (req, res) => {
   try {
@@ -356,6 +388,7 @@ module.exports = {
   createModule,
   updateModule,
   updateModuleContent,
+  deleteModule,
   getModuleQuiz,
   saveModuleQuiz,
   getAllScores,

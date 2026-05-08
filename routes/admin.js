@@ -12,6 +12,7 @@ const {
   createModule,
   updateModule,
   updateModuleContent,
+  deleteModule,
   getModuleQuiz,
   saveModuleQuiz,
   getAllScores,
@@ -35,6 +36,7 @@ router.get('/modules', getAllModulesAdmin);
 router.post('/modules', createModule);
 router.put('/modules/:id', updateModule);
 router.put('/modules/:id/content', updateModuleContent);
+router.delete('/modules/:id', deleteModule);
 router.get('/modules/:id/quiz', getModuleQuiz);
 router.put('/modules/:id/quiz', saveModuleQuiz);
 
