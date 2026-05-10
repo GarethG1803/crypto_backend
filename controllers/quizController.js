@@ -73,8 +73,11 @@ const submitQuiz = async (req, res) => {
     const rewardPoints = moduleDoc.exists ? moduleDoc.data().rewardPoints : 100;
     const earnedPoints = Math.round((scorePercent / 100) * rewardPoints);
 
-    // Save progress
+    // Save progress and award points only on first completion
     const progressId = `${userId}_${moduleId}`;
+    const existingProgress = await db.collection('progress').doc(progressId).get();
+    const alreadyCompleted = existingProgress.exists && existingProgress.data().quizCompleted;
+
     await db.collection('progress').doc(progressId).set({
       userId,
       moduleId,
@@ -84,18 +87,29 @@ const submitQuiz = async (req, res) => {
       completedAt: new Date().toISOString(),
     }, { merge: true });
 
-    // Award points
-    const pointsResult = await awardPoints(userId, earnedPoints);
-    await updateStreak(userId);
-    const newAchievements = await checkAndUnlockAchievements(userId);
+    let pointsResult = { points: 0, level: 1 };
+    let actualEarned = 0;
+    let newAchievements = [];
+
+    if (!alreadyCompleted) {
+      actualEarned = earnedPoints;
+      pointsResult = await awardPoints(userId, earnedPoints);
+      await updateStreak(userId);
+      newAchievements = await checkAndUnlockAchievements(userId);
+    } else {
+      // Retake — just fetch current totals
+      const userDoc = await db.collection('users').doc(userId).get();
+      const userData = userDoc.data();
+      pointsResult = { points: userData.points || 0, level: userData.level || 1 };
+    }
 
     res.json({
       score: scorePercent,
       correct,
       total: quiz.questions.length,
-      earnedPoints,
+      earnedPoints: actualEarned,
       results,
-      newAchievements: newAchievements.map(a => ({ title: a.title, icon: a.icon })),
+      newAchievements: newAchievements.map ? newAchievements.map(a => ({ title: a.title, icon: a.icon })) : [],
       totalPoints: pointsResult.points,
       level: pointsResult.level,
     });
